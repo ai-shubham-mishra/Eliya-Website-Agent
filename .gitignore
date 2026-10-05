@@ -6,6 +6,9 @@ __pycache__/
 *.pyd
 .env
 .DS_Store
-.env
-venv
-venv/
+node_modules/
+dist/
+dist-ssr/
+*.local
+resources
+*/node_modules/

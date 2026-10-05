@@ -12,7 +12,7 @@ services:
     environment:
       - AZURE_AI_PROJECT_ENDPOINT=${AZURE_AI_PROJECT_ENDPOINT:-https://as-eliya-aiservices-stg.services.ai.azure.com/api/projects/as-eliya-aiservices-stg-project}
       - AGENT_NAME=${AGENT_NAME:-as-eliya-website-agent-stg}
-      - AGENT_VERSION=${AGENT_VERSION:-6}
+      - AGENT_VERSION=${AGENT_VERSION:-latest}
       - AZURE_TENANT_ID=${AZURE_TENANT_ID:-}
       - AZURE_CLIENT_ID=${AZURE_CLIENT_ID:-}
       - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET:-}

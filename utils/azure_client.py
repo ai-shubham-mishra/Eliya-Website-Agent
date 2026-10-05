@@ -10,6 +10,7 @@ class AzureAgentClient:
     def __init__(self):
         self._project_client: AIProjectClient | None = None
         self._openai_client = None
+        self._latest_version: str | None = None
         self._init_client()
 
     def _init_client(self):
@@ -29,11 +30,42 @@ class AzureAgentClient:
                 credential=credential,
             )
             self._openai_client = self._project_client.get_openai_client()
+            self._fetch_latest_version()
             logger.info("Successfully initialized Azure AI Project Client with Managed Identity / DefaultAzureCredential.")
         except Exception as e:
             logger.warning(f"Could not initialize Azure AI Project Client: {e}. Will retry on request or return detailed error.")
             self._project_client = None
             self._openai_client = None
+
+    def _fetch_latest_version(self) -> str | None:
+        """Dynamically queries the newest published agent version from Azure AI Project."""
+        try:
+            if self._project_client:
+                versions = list(self._project_client.agents.list_versions(settings.AGENT_NAME))
+                if versions:
+                    self._latest_version = str(versions[0].version)
+                    logger.info(f"Discovered latest agent version: {self._latest_version}")
+                    return self._latest_version
+        except Exception as e:
+            logger.debug(f"Could not query agent version list: {e}")
+        return self._latest_version
+
+    def get_effective_version(self) -> str:
+        """Returns the version used in agent calls (resolved latest version or configured fallback)."""
+        if settings.AGENT_VERSION and settings.AGENT_VERSION.lower() != "latest":
+            return settings.AGENT_VERSION
+        return self._latest_version or "latest"
+
+    def _build_agent_reference(self) -> Dict[str, Any]:
+        """Builds agent reference dictionary. Omitting version or setting specific version."""
+        ref: Dict[str, Any] = {
+            "name": settings.AGENT_NAME,
+            "type": "agent_reference",
+        }
+        # If a specific numeric version is pinned, include it; otherwise omit so Azure resolves latest automatically
+        if settings.AGENT_VERSION and settings.AGENT_VERSION.lower() != "latest":
+            ref["version"] = settings.AGENT_VERSION
+        return ref
 
     def ask_agent(self, messages: List[Dict[str, str]]) -> str:
         """
@@ -47,13 +79,7 @@ class AzureAgentClient:
 
         response = self._openai_client.responses.create(
             input=messages,
-            extra_body={
-                "agent_reference": {
-                    "name": settings.AGENT_NAME,
-                    "version": settings.AGENT_VERSION,
-                    "type": "agent_reference",
-                }
-            },
+            extra_body={"agent_reference": self._build_agent_reference()},
         )
         return getattr(response, "output_text", str(response))
 
@@ -69,13 +95,7 @@ class AzureAgentClient:
 
         stream = self._openai_client.responses.create(
             input=messages,
-            extra_body={
-                "agent_reference": {
-                    "name": settings.AGENT_NAME,
-                    "version": settings.AGENT_VERSION,
-                    "type": "agent_reference",
-                }
-            },
+            extra_body={"agent_reference": self._build_agent_reference()},
             stream=True,
         )
 

@@ -15,6 +15,7 @@ from components.models import (
 )
 from components.agent_service import agent_service
 from components.session_manager import session_manager
+from utils.azure_client import azure_agent_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("agent_api")
@@ -41,7 +42,7 @@ def health_check():
     return HealthResponse(
         status="healthy",
         agent_name=settings.AGENT_NAME,
-        agent_version=settings.AGENT_VERSION,
+        agent_version=azure_agent_client.get_effective_version(),
         endpoint=settings.AZURE_AI_PROJECT_ENDPOINT,
     )
 

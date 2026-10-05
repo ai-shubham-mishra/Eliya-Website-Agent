@@ -1,1 +1,173 @@
+name: Deploy Website Chat Agent to Staging
 
+on:
+  push:
+    branches:
+      - staging
+    paths:
+      - 'main.py'
+      - 'components/**'
+      - 'utils/**'
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - '.github/workflows/deploy-stg.yml'
+  workflow_dispatch:
+
+env:
+  ENVIRONMENT: staging
+
+jobs:
+  deploy:
+    name: Build and Deploy as-eliya-website-chat-agent-stg to Container Apps
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set short SHA
+        id: vars
+        run: echo "SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-8)" >> $GITHUB_OUTPUT
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: |
+            {
+              "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
+            }
+
+      - name: Set Azure subscription context
+        run: |
+          az account set --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          az account show
+
+      # container app name, environment and resource group are fixed (provisioned in terraform/staging/05-container-apps.tf)
+      - name: Fetch deployment config from KeyVault
+        id: kv
+        run: |
+          ACR_SERVER=$(az keyvault secret show --vault-name as-eliya-kv-stg --name ACR-LOGIN-SERVER --query value -o tsv)
+
+          echo "ACR_SERVER=$ACR_SERVER" >> $GITHUB_OUTPUT
+          echo "CONTAINERAPP_NAME=as-eliya-website-chat-agent-stg" >> $GITHUB_OUTPUT
+          echo "CONTAINERAPP_ENV=as-eliya-container-env-stg" >> $GITHUB_OUTPUT
+          echo "CONTAINERAPP_RG=az-analytics-studio-staging" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image to ACR
+        run: |
+          az acr build \
+            --registry aseliyaacr \
+            --resource-group az-analytics-studio-shared \
+            --image as-eliya-website-chat-agent-stg:${{ steps.vars.outputs.SHORT_SHA }} \
+            --image as-eliya-website-chat-agent-stg:latest \
+            --file Dockerfile \
+            .
+
+      # placeholder image is public so first-ever creation doesn't need ACR auth yet
+      - name: Deploy to Azure Container Apps
+        run: |
+          IMAGE="${{ steps.kv.outputs.ACR_SERVER }}/as-eliya-website-chat-agent-stg:${{ steps.vars.outputs.SHORT_SHA }}"
+
+          az containerapp update \
+            --name "${{ steps.kv.outputs.CONTAINERAPP_NAME }}" \
+            --resource-group "${{ steps.kv.outputs.CONTAINERAPP_RG }}" \
+            --image "$IMAGE" \
+          || az containerapp create \
+            --name "${{ steps.kv.outputs.CONTAINERAPP_NAME }}" \
+            --resource-group "${{ steps.kv.outputs.CONTAINERAPP_RG }}" \
+            --environment "${{ steps.kv.outputs.CONTAINERAPP_ENV }}" \
+            --image mcr.microsoft.com/azuredocs/containerapps-helloworld:latest \
+            --target-port 8000 \
+            --ingress external \
+            --sticky-sessions true \
+            --system-assigned \
+            --env-vars \
+              "AZURE_AI_PROJECT_ENDPOINT=${{ secrets.AZURE_AI_PROJECT_ENDPOINT || 'https://as-eliya-aiservices-stg.services.ai.azure.com/api/projects/as-eliya-aiservices-stg-project' }}" \
+              "AGENT_NAME=${{ secrets.AGENT_NAME || 'as-eliya-website-agent-stg' }}" \
+              "AGENT_VERSION=latest" \
+              "PORT=8000" \
+              "HOST=0.0.0.0"
+
+      - name: Ensure Container App identity has AcrPull and Cognitive Services permissions
+        run: |
+          PRINCIPAL_ID=$(az containerapp show \
+            --name "${{ steps.kv.outputs.CONTAINERAPP_NAME }}" \
+            --resource-group "${{ steps.kv.outputs.CONTAINERAPP_RG }}" \
+            --query identity.principalId -o tsv)
+
+          echo "Container App Principal ID: $PRINCIPAL_ID"
+
+          # 1. Grant AcrPull on ACR
+          ACR_ID=$(az acr show --name aseliyaacr --resource-group az-analytics-studio-shared --query id -o tsv)
+          az role assignment create \
+            --assignee "$PRINCIPAL_ID" \
+            --role AcrPull \
+            --scope "$ACR_ID" \
+          || echo "AcrPull role assignment already exists, skipping"
+
+          # 2. Grant Managed Identity permissions on Azure AI Services
+          AI_SERVICES_ID=$(az cognitiveservices account show --name as-eliya-aiservices-stg --resource-group az-analytics-studio-shared --query id -o tsv)
+          az role assignment create \
+            --assignee "$PRINCIPAL_ID" \
+            --role "Cognitive Services OpenAI User" \
+            --scope "$AI_SERVICES_ID" \
+          || echo "Cognitive Services OpenAI User role assignment already exists, skipping"
+
+          az role assignment create \
+            --assignee "$PRINCIPAL_ID" \
+            --role "Azure AI Developer" \
+            --scope "$AI_SERVICES_ID" \
+          || echo "Azure AI Developer role assignment already exists, skipping"
+
+      # configured after role assignment to avoid the create-time RBAC propagation wait
+      - name: Configure registry authentication
+        run: |
+          az containerapp registry set \
+            --name "${{ steps.kv.outputs.CONTAINERAPP_NAME }}" \
+            --resource-group "${{ steps.kv.outputs.CONTAINERAPP_RG }}" \
+            --server "${{ steps.kv.outputs.ACR_SERVER }}" \
+            --identity system
+
+      # no-op if update earlier already applied the real image; required after a fresh create
+      - name: Switch to target image and enforce session affinity
+        run: |
+          IMAGE="${{ steps.kv.outputs.ACR_SERVER }}/as-eliya-website-chat-agent-stg:${{ steps.vars.outputs.SHORT_SHA }}"
+          az containerapp update \
+            --name "${{ steps.kv.outputs.CONTAINERAPP_NAME }}" \
+            --resource-group "${{ steps.kv.outputs.CONTAINERAPP_RG }}" \
+            --image "$IMAGE"
+
+          # Enforce sticky sessions on ingress
+          az containerapp ingress sticky-sessions set \
+            --name "${{ steps.kv.outputs.CONTAINERAPP_NAME }}" \
+            --resource-group "${{ steps.kv.outputs.CONTAINERAPP_RG }}" \
+            --affinity sticky \
+          || echo "Sticky sessions already configured or set via create"
+
+      - name: Verify deployment
+        id: verify
+        run: |
+          FQDN=$(az containerapp show \
+            --name "${{ steps.kv.outputs.CONTAINERAPP_NAME }}" \
+            --resource-group "${{ steps.kv.outputs.CONTAINERAPP_RG }}" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+
+          echo "FQDN=$FQDN" >> $GITHUB_OUTPUT
+
+          echo "Waiting 30 seconds for revision to be ready..."
+          sleep 30
+          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://$FQDN/health" || echo "000")
+          echo "HEALTH_STATUS=$HEALTH_STATUS" >> $GITHUB_OUTPUT
+
+          if [ "$HEALTH_STATUS" == "200" ]; then
+            echo "HEALTH_CHECK=passed" >> $GITHUB_OUTPUT
+            echo "Deployment verified successfully at https://$FQDN"
+          else
+            echo "HEALTH_CHECK=failed" >> $GITHUB_OUTPUT
+            echo "Health check failed with status $HEALTH_STATUS"
+            exit 1
+          fi

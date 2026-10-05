@@ -32,10 +32,16 @@ body {
   padding: 16px;
 }
 
+#root {
+  width: 100%;
+  max-width: 880px;
+  height: 94vh;
+  display: flex;
+}
+
 .chat-container {
   width: 100%;
-  max-width: 860px;
-  height: 94vh;
+  height: 100%;
   background: var(--chat-bg);
   border-radius: var(--radius-lg);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
@@ -149,7 +155,7 @@ body {
 .message {
   display: flex;
   flex-direction: column;
-  max-width: 80%;
+  max-width: 82%;
 }
 
 .message.user {
@@ -174,91 +180,11 @@ body {
   word-break: break-word;
 }
 
-/* Markdown styling inside bubbles */
-.message-bubble p {
-  margin-bottom: 0.6em;
-}
-.message-bubble p:last-child {
-  margin-bottom: 0;
-}
-.message-bubble ul, .message-bubble ol {
-  margin: 0.5em 0 0.5em 1.4em;
-}
-.message-bubble li {
-  margin-bottom: 0.3em;
-}
-.message-bubble strong {
-  font-weight: 600;
-}
-.message-bubble code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  background-color: rgba(0, 0, 0, 0.06);
-  padding: 2px 5px;
-  border-radius: 4px;
-  font-size: 0.88em;
-}
-.message.user .message-bubble code {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: #fff;
-}
-.message-bubble pre {
-  background-color: #24292f;
-  color: #f6f8fa;
-  padding: 12px;
-  border-radius: 6px;
-  overflow-x: auto;
-  margin: 0.6em 0;
-}
-.message-bubble pre code {
-  background: transparent;
-  color: inherit;
-  padding: 0;
-}
-.message-bubble blockquote {
-  border-left: 3px solid var(--primary-color);
-  padding-left: 10px;
-  color: var(--muted-text);
-  margin: 0.5em 0;
-}
-
-/* Subtle fade typing token animation */
-.token-fade {
-  display: inline;
-  animation: tokenFadeIn 0.25s ease-out forwards;
-}
-
-@keyframes tokenFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(2px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Streaming blinking cursor */
-.streaming-cursor {
-  display: inline-block;
-  width: 7px;
-  height: 14px;
-  background-color: var(--primary-color);
-  vertical-align: middle;
-  margin-left: 3px;
-  border-radius: 1px;
-  animation: cursorBlink 0.8s infinite ease-in-out;
-}
-
-@keyframes cursorBlink {
-  0%, 100% { opacity: 0; }
-  50% { opacity: 1; }
-}
-
 .message.user .message-bubble {
   background-color: var(--user-bubble);
   color: var(--user-text);
   border-bottom-right-radius: 3px;
+  white-space: pre-wrap;
 }
 
 .message.assistant .message-bubble {
@@ -283,6 +209,83 @@ body {
 
 .message.user .message-time {
   text-align: right;
+}
+
+/* Markdown typography inside assistant bubbles */
+.markdown-content p {
+  margin-bottom: 0.6em;
+}
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+.markdown-content ul,
+.markdown-content ol {
+  margin: 0.4em 0 0.5em 1.4em;
+}
+.markdown-content li {
+  margin-bottom: 0.3em;
+}
+.markdown-content strong {
+  font-weight: 600;
+}
+.markdown-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background-color: rgba(0, 0, 0, 0.06);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 0.88em;
+}
+.markdown-content pre {
+  background-color: #24292f;
+  color: #f6f8fa;
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.6em 0;
+}
+.markdown-content pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+.markdown-content blockquote {
+  border-left: 3px solid var(--primary-color);
+  padding-left: 10px;
+  color: var(--muted-text);
+  margin: 0.5em 0;
+}
+
+/* Subtle fade typing token animation */
+.token-fade {
+  animation: tokenFadeIn 0.25s ease-out forwards;
+}
+
+@keyframes tokenFadeIn {
+  from {
+    opacity: 0.3;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Streaming blinking cursor */
+.streaming-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  background-color: var(--primary-color);
+  vertical-align: middle;
+  margin-left: 3px;
+  border-radius: 1px;
+  animation: cursorBlink 0.8s infinite ease-in-out;
+}
+
+@keyframes cursorBlink {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
 }
 
 /* Input Area */

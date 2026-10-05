@@ -13,7 +13,8 @@ class Settings:
     AZURE_CLIENT_SECRET: str | None = os.getenv("AZURE_CLIENT_SECRET", None)
     
     AGENT_NAME: str = os.getenv("AGENT_NAME", "as-eliya-website-agent-stg")
-    AGENT_VERSION: str = os.getenv("AGENT_VERSION", "2")
+    # If AGENT_VERSION is "latest", empty, or unset, the API resolves to the latest version automatically
+    AGENT_VERSION: str = os.getenv("AGENT_VERSION", "latest")
     
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
