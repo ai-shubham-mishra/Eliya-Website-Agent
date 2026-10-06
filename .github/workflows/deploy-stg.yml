@@ -76,6 +76,8 @@ jobs:
             --name "${{ steps.kv.outputs.CONTAINERAPP_NAME }}" \
             --resource-group "${{ steps.kv.outputs.CONTAINERAPP_RG }}" \
             --image "$IMAGE" \
+            --set-env-vars "AZURE_AI_API_KEY=secretref:azure-ai-api-key" \
+            --secrets "azure-ai-api-key=${{ secrets.AZURE_AI_API_KEY }}" \
           || az containerapp create \
             --name "${{ steps.kv.outputs.CONTAINERAPP_NAME }}" \
             --resource-group "${{ steps.kv.outputs.CONTAINERAPP_RG }}" \
@@ -84,10 +86,12 @@ jobs:
             --target-port 8000 \
             --ingress external \
             --system-assigned \
+            --secrets "azure-ai-api-key=${{ secrets.AZURE_AI_API_KEY }}" \
             --env-vars \
               "AZURE_AI_PROJECT_ENDPOINT=${{ secrets.AZURE_AI_PROJECT_ENDPOINT || 'https://as-eliya-aiservices-stg.services.ai.azure.com/api/projects/as-eliya-aiservices-stg-project' }}" \
               "AGENT_NAME=${{ secrets.AGENT_NAME || 'as-eliya-website-agent-stg' }}" \
               "AGENT_VERSION=latest" \
+              "AZURE_AI_API_KEY=secretref:azure-ai-api-key" \
               "PORT=8000" \
               "HOST=0.0.0.0"
 

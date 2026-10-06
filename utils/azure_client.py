@@ -1,5 +1,6 @@
 import logging
 from typing import Any, Dict, List
+from azure.core.credentials import AzureKeyCredential
 from azure.identity import DefaultAzureCredential
 from azure.ai.projects import AIProjectClient
 from utils.config import settings
@@ -15,23 +16,37 @@ class AzureAgentClient:
 
     def _init_client(self):
         try:
-            # If AZURE_CLIENT_SECRET is provided (e.g. Service Principal for local Docker/dev),
-            # DefaultAzureCredential's EnvironmentCredential picks up AZURE_TENANT_ID,
-            # AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET automatically.
-            # If AZURE_CLIENT_SECRET is absent, managed_identity_client_id is used for User-Assigned Managed Identity.
-            credential_kwargs = {}
-            if settings.AZURE_CLIENT_ID and not settings.AZURE_CLIENT_SECRET:
-                credential_kwargs["managed_identity_client_id"] = settings.AZURE_CLIENT_ID
+            if settings.AZURE_AI_API_KEY:
+                # API key auth bypasses AAD/RBAC entirely (requires disableLocalAuth=false on the account).
+                self._project_client = AIProjectClient(
+                    endpoint=settings.AZURE_AI_PROJECT_ENDPOINT,
+                    credential=AzureKeyCredential(settings.AZURE_AI_API_KEY),
+                )
+                logger.info("Successfully initialized Azure AI Project Client with API Key auth.")
+            else:
+                # If AZURE_CLIENT_SECRET is provided (e.g. Service Principal for local Docker/dev),
+                # DefaultAzureCredential's EnvironmentCredential picks up AZURE_TENANT_ID,
+                # AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET automatically.
+                # If AZURE_CLIENT_SECRET is absent, managed_identity_client_id is used for User-Assigned Managed Identity.
+                credential_kwargs = {}
+                if settings.AZURE_CLIENT_ID and not settings.AZURE_CLIENT_SECRET:
+                    credential_kwargs["managed_identity_client_id"] = settings.AZURE_CLIENT_ID
 
-            credential = DefaultAzureCredential(**credential_kwargs)
-            
-            self._project_client = AIProjectClient(
-                endpoint=settings.AZURE_AI_PROJECT_ENDPOINT,
-                credential=credential,
-            )
-            self._openai_client = self._project_client.get_openai_client()
+                credential = DefaultAzureCredential(**credential_kwargs)
+
+                self._project_client = AIProjectClient(
+                    endpoint=settings.AZURE_AI_PROJECT_ENDPOINT,
+                    credential=credential,
+                )
+                logger.info("Successfully initialized Azure AI Project Client with Managed Identity / DefaultAzureCredential.")
+
+            if settings.AZURE_AI_API_KEY:
+                # get_openai_client() only auto-builds a bearer-token provider for TokenCredential;
+                # a raw API key must be passed explicitly to be used as the Authorization value.
+                self._openai_client = self._project_client.get_openai_client(api_key=settings.AZURE_AI_API_KEY)
+            else:
+                self._openai_client = self._project_client.get_openai_client()
             self._fetch_latest_version()
-            logger.info("Successfully initialized Azure AI Project Client with Managed Identity / DefaultAzureCredential.")
         except Exception as e:
             logger.warning(f"Could not initialize Azure AI Project Client: {e}. Will retry on request or return detailed error.")
             self._project_client = None
